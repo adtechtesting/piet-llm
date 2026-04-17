@@ -10,6 +10,7 @@ import { Input } from "./ui/input";
 interface Message {
   role: "user" | "assistant";
   content: string;
+  buttons?: { label: string; payload: string }[];
 }
 
 const TypingIndicator = () => (
@@ -38,6 +39,33 @@ export function Chatbot() {
   };
 
   useEffect(() => {
+    const initializeChat = async () => {
+      try {
+        const response = await fetch(`/api/ask`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "INIT_CHAT",
+            history: [],
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setMessages([
+            {
+              role: "assistant",
+              content: data.text,
+              buttons: data.buttons,
+            },
+          ]);
+        }
+      } catch (error) {
+        console.error("Failed to initialize chat:", error);
+      }
+    };
+
+    initializeChat();
+
     const timeout = setTimeout(() => {
       setIsOpen(true);
     }, 5000);
@@ -63,12 +91,11 @@ export function Chatbot() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || isLoading) return;
 
-    const userMessage = input.trim();
-    setInput("");
+    const userMessage = text.trim();
+    if (input === text) setInput("");
 
     const newUserMessage: Message = { role: "user", content: userMessage };
     setMessages((prev) => [...prev, newUserMessage]);
@@ -79,8 +106,8 @@ export function Chatbot() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          question: userMessage,
-          history: messages,
+          message: userMessage,
+          history: messages.map(m => ({ role: m.role, content: m.content })),
         }),
       });
 
@@ -92,7 +119,8 @@ export function Chatbot() {
 
       const assistantMessage: Message = {
         role: "assistant",
-        content: data.answer || "Sorry, I couldn't get a response.",
+        content: data.text || "Sorry, I couldn't get a response.",
+        buttons: data.buttons,
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
@@ -107,6 +135,15 @@ export function Chatbot() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage(input);
+  };
+
+  const handleButtonClick = (payload: string) => {
+    sendMessage(payload);
   };
 
   return (
@@ -170,13 +207,13 @@ export function Chatbot() {
             {messages.map((message, index) => (
               <div
                 key={index}
-                className={`mb-6 flex animate-in slide-in-from-bottom-2 duration-500 ${
-                  message.role === "user" ? "justify-end" : "justify-start"
+                className={`mb-6 flex flex-col animate-in slide-in-from-bottom-2 duration-500 ${
+                  message.role === "user" ? "items-end" : "items-start"
                 }`}
                 style={{ animationDelay: `${index * 80}ms` }}
               >
                 <div
-                  className={`px-5 py-3 rounded-2xl max-w-[75%] text-sm leading-relaxed break-words shadow-md ${
+                  className={`px-5 py-3 rounded-2xl max-w-[85%] text-sm leading-relaxed break-words shadow-md ${
                     message.role === "user"
                       ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-blue-600/30"
                       : "bg-white text-gray-900 border border-gray-100 shadow-sm"
@@ -184,6 +221,20 @@ export function Chatbot() {
                 >
                   {message.content}
                 </div>
+                {message.buttons && message.buttons.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {message.buttons.map((button, btnIndex) => (
+                      <button
+                        key={btnIndex}
+                        onClick={() => handleButtonClick(button.payload)}
+                        disabled={isLoading}
+                        className="text-xs px-3 py-1.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {button.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
 
